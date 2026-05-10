@@ -160,23 +160,23 @@ struct UserProfileView: View {
 //            let imageURL = URL(string: "https://picsum.photos/300")!
 //            let videoURL = URL(string: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8")!
             
-            guard   let videoURL = Bundle.main.url(forResource: "gyn", withExtension: "mp4")else{
-                print("video is not frsth")
-                return
-            }
-            guard  let imageURL = Bundle.main.url(forResource: "Hamburger", withExtension: "jpg")else{
-                print("image not fetch")
-                return
-            }
-            // Image
-            ContentClassifier.shared.classifyImage(url: imageURL) { label in
-                print("Image category:", label ?? "Unknown")
-            }
-
-            // Video
-            ContentClassifier.shared.classifyVideo(url: videoURL) { label in
-                print("Video category:", label ?? "Unknown")
-            }
+//            guard   let videoURL = Bundle.main.url(forResource: "gyn", withExtension: "mp4")else{
+//                print("video is not frsth")
+//                return
+//            }
+//            guard  let imageURL = Bundle.main.url(forResource: "Hamburger", withExtension: "jpg")else{
+//                print("image not fetch")
+//                return
+//            }
+//            // Image
+//            ContentClassifier.shared.classifyImage(url: imageURL) { label in
+//                print("Image category:", label ?? "Unknown")
+//            }
+//
+//            // Video
+//            ContentClassifier.shared.classifyVideo(url: videoURL) { label in
+//                print("Video category:", label ?? "Unknown")
+//            }
         })
         .onChange(of: showDetail) { oldValue, newValue in
             if newValue == true {

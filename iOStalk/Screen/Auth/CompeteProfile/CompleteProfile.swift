@@ -102,10 +102,13 @@ struct CompleteProfile: View {
                         .cornerRadius(10)
                         .shadow(radius: 10)
                 }
+                
             }.showErrorBanner($completeVm.errorMessage)
-                .navigationDestination(isPresented: $completeVm.isSuccess) {
-                    //                    OtpView(email: email)
-                }
+            .navigationDestination(isPresented: $completeVm.userSaved) {
+                
+                MainTabbedView()
+            }
+                
              
             
         

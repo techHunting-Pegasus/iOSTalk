@@ -16,7 +16,6 @@ enum NetworkError: Error, LocalizedError {
     case noInternet
     case decodingError(Error)
     case serverError(Int)
-    case apiError(APIError)
     case unknown(Error)
     
     var errorDescription: String? {
@@ -29,8 +28,6 @@ enum NetworkError: Error, LocalizedError {
             return "Decoding Failed: \(error.localizedDescription)"
         case .serverError(let code):
             return "Server Error (HTTP \(code))"
-        case .apiError(let apiError):
-            return apiError.message ?? "Something went wrong."
         case .unknown(let error):
             return error.localizedDescription
         }
@@ -39,205 +36,37 @@ enum NetworkError: Error, LocalizedError {
 
 
 
-struct Refreshtokenresponse: Decodable, Sendable {
-    let status: Bool?
-    let success: Bool?
-    let message: String?
-    let data: Refreshtokenresponsedata?
-}
 
-struct Refreshtokenresponsedata: Decodable, Sendable {
-    let accessToken: String?
-    let expiresIn: Int?
-    let refreshToken: String?
-    let refreshExpiresIn: Int?
 
-    enum CodingKeys: String, CodingKey {
-        case accessToken = "access_token"
-        case expiresIn = "expires_in"
-        case refreshToken = "refresh_token"
-        case refreshExpiresIn = "refresh_expires_in"
-    }
-}
-
-fileprivate enum SessionReset {
-    static func clearAndNotifyLogout() {
-        AppDefault.clearUserDefaults()
-        HTTPCookieStorage.shared.removeCookies(since: .distantPast)
-        URLCache.shared.removeAllCachedResponses()
-
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(
-                name: Notification.Name("LogoutUser"),
-                object: nil
-            )
-        }
-    }
-}
-
-fileprivate final class AuthInterceptor: RequestInterceptor {
+final class RetryInterceptor: RequestInterceptor {
     
-    private var isRefreshing = false
-    private var retryRequests: [(RetryResult) -> Void] = []
+    private let retryLimit = 4
     
-    // MARK: - Add Token To Request
-    func adapt(
-        _ urlRequest: URLRequest,
-        for session: Session,
-        completion: @escaping (Result<URLRequest, Error>) -> Void
-    ) {
-        
-        var request = urlRequest
-        
-        if let token = AppDefault.accestoken {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        }
-        
-        completion(.success(request))
-    }
-    
-    
-    // MARK: - Handle 401
     func retry(
         _ request: Request,
         for session: Session,
         dueTo error: Error,
         completion: @escaping (RetryResult) -> Void
     ) {
-        
-        guard let response = request.task?.response as? HTTPURLResponse,
-              response.statusCode == 401 else {
+        guard request.retryCount < retryLimit else {
             completion(.doNotRetry)
             return
         }
         
-        retryRequests.append(completion)
-        
-        if !isRefreshing {
-            refreshToken()
+        let nsError = error as NSError
+        print(nsError.localizedDescription, "kejhbviebv")
+        // Retry only network / TLS errors
+        if nsError.domain == NSURLErrorDomain {
+            let delay = pow(2.0, Double(request.retryCount)) // 1s, 2s, 4s, 8s
+            
+            print("🔁 Retry \(request.retryCount + 1) after \(delay)s")
+            completion(.retryWithDelay(delay))
+        } else {
+            completion(.retry)
         }
     }
 }
-private extension AuthInterceptor {
-    func refreshToken() {
-        
-        guard let refreshToken = AppDefault.refreshtoken else {
-            forceLogout()
-            return
-        }
-        isRefreshing = true
-        let cleanToken = refreshToken.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleanToken.isEmpty else {
-            forceLogout()
-            return
-        }
-        
-        
-        let fullURL =  APIEndpoints.refreshtoken
-        let headers: HTTPHeaders = [
-            "Authorization": "Bearer \(cleanToken)"
-        ]
-        print("headers:", headers)
-        print("URL:", fullURL)
 
-        
-        AF.request(fullURL, method: .post, headers: headers)
-            .response { response in
-                self.isRefreshing = false
-                
-                print("STATUS:", response.response?.statusCode ?? 0)
-                
-                if let data = response.data {
-                    print("RAW RESPONSE:", String(data: data, encoding: .utf8) ?? "nil")
-                    do {
-                        
-                        let decoded = try JSONDecoder().decode(Refreshtokenresponse.self, from: data)
-                        if decoded.status == false {
-                            
-                            print(decoded.message, "refresh message")
-                            self.forceLogout()
-                        }else{
-                            AppDefault.accestoken = decoded.data?.accessToken ?? ""
-                            AppDefault.refreshtoken = decoded.data?.refreshToken ?? ""
-                            AppDefault.isLogin = true
-                            
-                            self.retryRequests.forEach { $0(.retry) }
-                            self.retryRequests.removeAll()
-                            
-                        }
-                        
-                        
-                    } catch {
-                        print(error.localizedDescription, "refresh token error")
-                        self.forceLogout()
-                    }
-                    
-                    
-                } else {
-                    self.forceLogout()
-                    print("NO DATA RETURNED")
-                }
-            }
-    }
-    
-    
-    
-    
-    
-    func logout() {
-        //
-        let token = AppDefault.accestoken ?? ""
-        let headers: HTTPHeaders = [
-            "Authorization": "Bearer \(token)"
-        ]
-        
-        
-        AF.request(
-            APIEndpoints.logout,
-            method: .post,
-            parameters: [:],
-            encoding: JSONEncoding.default,
-            headers: headers
-        )
-        .validate()
-        .responseData(queue: .main) { response in
-            
-            self.isRefreshing = false
-            
-            switch response.result {
-                
-            case .success(let data):
-                do {
-                    let decoded = try JSONDecoder().decode(LoginResponse.self, from: data)
-                    
-                    if decoded.status == true {
-                        self.cleardata()
-                    }
-                    
-                } catch {
-                    self.cleardata()
-                    print(error.localizedDescription, "logout error")
-                }
-                
-            case .failure:
-                self.cleardata()
-            }
-        }
-        
-        
-    }
-    
-    func cleardata(){
-        self.retryRequests.forEach { $0(.doNotRetry) }
-        self.retryRequests.removeAll()
-        SessionReset.clearAndNotifyLogout()
-    }
-
-    func forceLogout() {
-        isRefreshing = false
-        cleardata()
-    }
-}
 
 
 
@@ -250,19 +79,20 @@ final class NetworkManager {
         
         let configuration = URLSessionConfiguration.default
         
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 30
+        configuration.timeoutIntervalForRequest = 60
+        configuration.timeoutIntervalForResource = 60
         
-        // ✅ IMPORTANT FOR AZURE (ARR Affinity)
-        configuration.httpCookieStorage = HTTPCookieStorage.shared
-        configuration.httpShouldSetCookies = true
+        configuration.waitsForConnectivity = true
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         
-        let interceptor = AuthInterceptor()
+        configuration.httpCookieStorage = HTTPCookieStorage.shared
+        configuration.httpShouldSetCookies = true
+
+        
         
         return Session(
             configuration: configuration,
-            interceptor: interceptor
+            interceptor: RetryInterceptor() // ✅ only this
         )
     }()
     
@@ -385,28 +215,7 @@ final class NetworkManager {
             }
         }
 
-    func validateCurrentSession() async {
-        guard AppDefault.hasAuthenticatedSession else { return }
-        guard let url = URL(string: APIEndpoints.userProfile) else { return }
-
-        let headers: HTTPHeaders = [
-            "Content-Type": "application/json",
-            "Authorization": "Bearer \(AppDefault.accestoken ?? "")"
-        ]
-
-        do {
-            _ = try await request(
-                url: url,
-                method: .get,
-                parameters: nil,
-                encoding: URLEncoding.default,
-                headers: headers
-            ) as UserProfileResponse
-        } catch {
-            print("Session validation failed: \(error.localizedDescription)")
-        }
     }
-}
 private extension NetworkManager {
     func logCURLRequest(
         url: URL,
@@ -432,7 +241,6 @@ private extension NetworkManager {
 
         print("CURL REQUEST:\n\(components.joined(separator: " \\\n"))")
     }
-    
     func request<T: Decodable>(
         url: URL,
         method: HTTPMethod,
@@ -443,6 +251,8 @@ private extension NetworkManager {
         
         return try await withCheckedThrowingContinuation { continuation in
             
+            print("🚀 REQUEST STARTED:", url.absoluteString)
+            
             session.request(
                 url,
                 method: method,
@@ -450,40 +260,89 @@ private extension NetworkManager {
                 encoding: encoding,
                 headers: headers
             )
-            .validate()
             .responseData { response in
+                
+                print("RESPONSE RECEIVED")
                 
                 switch response.result {
                     
                 case .success(let data):
+                    
+                    print("RAW RESPONSE:",
+                          String(data: data, encoding: .utf8) ?? "nil")
+                    
                     do {
-                        if let data = response.data {
-                            print("RAW RESPONSE",
-                                  String(data: data, encoding: .utf8) ?? "nil")
-                        }
-                        
                         let decoded = try JSONDecoder().decode(T.self, from: data)
                         continuation.resume(returning: decoded)
                     }
-                    catch let error as DecodingError {
-                        
-                        print("🔥 DECODING ERROR")
-                        print(error.detailedDescription)
-                        
-                    }catch {
-                        print("Error:\(error.localizedDescription)")
+                    catch {
+                        print("DECODING ERROR:", error)
                         continuation.resume(
                             throwing: NetworkError.decodingError(error)
                         )
                     }
                     
                 case .failure(let error):
-                    self.handleError(response: response, error: error, continuation: continuation)
+                    print("REQUEST FAILED:", error.localizedDescription)
+                    
+                    continuation.resume(
+                        throwing: NetworkError.unknown(error)
+                    )
                 }
             }
         }
     }
-    
+//    func request<T: Decodable>(
+//        url: URL,
+//        method: HTTPMethod,
+//        parameters: Parameters?,
+//        encoding: ParameterEncoding,
+//        headers: HTTPHeaders?
+//    ) async throws -> T {
+//        
+//        return try await withCheckedThrowingContinuation { continuation in
+//            
+//            session.request(
+//                url,
+//                method: method,
+//                parameters: parameters,
+//                encoding: encoding,
+//                headers: headers
+//            )
+//            .validate()
+//            .responseData { response in
+//                
+//                switch response.result {
+//                    
+//                case .success(let data):
+//                    do {
+//                        if let data = response.data {
+//                            print("RAW RESPONSE",
+//                                  String(data: data, encoding: .utf8) ?? "nil")
+//                        }
+//                        
+//                        let decoded = try JSONDecoder().decode(T.self, from: data)
+//                        continuation.resume(returning: decoded)
+//                    }
+//                    catch let error as DecodingError {
+//                        
+//                        print("🔥 DECODING ERROR")
+//                        print(error.detailedDescription)
+//                        
+//                    }catch {
+//                        print("Error:\(error.localizedDescription)")
+//                        continuation.resume(
+//                            throwing: NetworkError.decodingError(error)
+//                        )
+//                    }
+//                    
+//                case .failure(let error):
+//                    self.handleError(response: response, error: error, continuation: continuation)
+//                }
+//            }
+//        }
+//    }
+//    
     
     func handleError<T>(
         response: AFDataResponse<Data>,
@@ -494,7 +353,7 @@ private extension NetworkManager {
         let statusCode = response.response?.statusCode
         
         if statusCode == 401 {
-            SessionReset.clearAndNotifyLogout()
+            
             continuation.resume(throwing: NetworkError.serverError(401))
             return
         }
@@ -505,12 +364,12 @@ private extension NetworkManager {
             print("RAW ERROR RESPONSE:", body)
         }
         
-        // Try decode API error
-        if let data = response.data,
-           let apiError = try? JSONDecoder().decode(APIError.self, from: data) {
-            continuation.resume(throwing: NetworkError.apiError(apiError))
-            return
-        }
+//        // Try decode API error
+//        if let data = response.data,
+//           let apiError = try? JSONDecoder().decode(APIError.self, from: data) {
+//            continuation.resume(throwing: NetworkError.apiError(apiError))
+//            return
+//        }
         
         if let code = statusCode {
             continuation.resume(throwing: NetworkError.serverError(code))

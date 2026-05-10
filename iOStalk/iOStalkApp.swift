@@ -25,7 +25,8 @@ struct iOStalkApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            SplashScreen()
+                .overlay(ToastView())
         }
         .modelContainer(sharedModelContainer)
     }

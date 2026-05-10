@@ -69,12 +69,52 @@ class WebViewNavigationDelegate: NSObject, WKNavigationDelegate {
 }
 
 // MARK: - WKWebView Wrapper
+class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: WebView
+
+        init(_ parent: WebView) {
+            self.parent = parent
+        }
+
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
+            guard let url = navigationAction.request.url else {
+                decisionHandler(.allow)
+                return
+            }
+
+            let scheme = url.scheme?.lowercased() ?? ""
+            let blockedSchemes = ["itms-apps", "tel", "sms", "facetime", "mailto"]
+            
+            if blockedSchemes.contains(scheme) {
+                decisionHandler(.cancel)
+                return
+            }
+
+            decisionHandler(.allow)
+        }
+
+        func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+            if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+               let serverTrust = challenge.protectionSpace.serverTrust {
+                completionHandler(.useCredential, URLCredential(trust: serverTrust))
+            } else {
+                completionHandler(.performDefaultHandling, nil)
+            }
+        }
+        
+        func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+            print("WebView failed: \(error.localizedDescription)")
+        }
+    }
 
 struct WebView: UIViewRepresentable {
     let url: URL
 
     // Must be retained strongly — delegate is weak in WKWebView
     private let navigationDelegate = WebViewNavigationDelegate()
+    func makeCoordinator() -> Coordinator {
+            Coordinator(self)
+        }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -92,7 +132,7 @@ struct WebView: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.navigationDelegate = navigationDelegate
-
+        webView.navigationDelegate = context.coordinator
         // Spoof Safari user agent — providers often block generic WebView UA
         webView.customUserAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
 

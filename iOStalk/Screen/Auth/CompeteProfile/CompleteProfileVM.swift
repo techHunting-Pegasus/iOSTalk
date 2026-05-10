@@ -36,17 +36,9 @@ class CompleteProfileVM: ObservableObject {
                 let user = try await authManager.supabase.auth.user()
                 
                 let usermodal = UserModal(id: user.id.uuidString, name: name, email: email, imgurl: url, pass: password)
-                
-                let encryptedString = try EncryptionHelper.encryptObject(usermodal)
-                
-                
-               
-               
-          let  userRecord =  uswq(id: user.id.uuidString, Userstring: encryptedString)
-                print(userRecord, "User data")
-              
-                
-                authManager.saveUserData(value: userRecord)
+   
+      
+                authManager.saveUserData(value: usermodal)
                     .receive(on: DispatchQueue.main)
                     .sink { [weak self] completion in
                         print("User save completed")
@@ -54,16 +46,20 @@ class CompleteProfileVM: ObservableObject {
                             self?.isLoading = false
                         }
                     } receiveValue: { res in
-                        print(res)
-                        if ((res.status == 201) || (res.status == 200)) {
+                        print(res, "ergrtgrtgvrtgrtgrtg")
+                      
                             self.userSaved = true
-                        }
+                            AppDefaults.isLogin = true
+                        
                     }
                     .store(in: &cancellables)
 
             } catch {
                 print(" Upload failed:", error)
-                isLoading = false
+                DispatchQueue.main.async(execute: {
+                    self.isLoading = false
+                })
+               
             }
         }
         

@@ -7,12 +7,28 @@
 
 import SwiftUI
 
-struct AppBackgroundView: View {
+import SwiftUI
+
+struct AppBackgroundView<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
     var body: some View {
-        Text(/*@START_MENU_TOKEN@*/"Hello, World!"/*@END_MENU_TOKEN@*/)
+        ZStack {
+            LinearGradient(colors: [.blue, .indigo], startPoint: .top, endPoint: .bottom)
+                .ignoresSafeArea()
+
+            content
+        }
     }
 }
 
+
 #Preview {
-    AppBackgroundView()
+    AppBackgroundView(content: {
+        Text("dfvdf")
+    })
 }

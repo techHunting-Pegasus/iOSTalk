@@ -44,11 +44,11 @@ struct MainTabbedView: View {
                     ZStack(alignment:.bottom){
                         
                         TabView(selection: $selectedTab) {
-                            HomeView()
+                            HomeView(isMenuOpen: $showMenu)
                                 .tag(0)
-
-                            ContentView(isMenuOpen: $showMenu)
-                                .tag(1)
+//
+//                            ContentView(isMenuOpen: $showMenu)
+//                                .tag(1)
                             
                         }
                         .toolbar(.hidden, for: .tabBar)
@@ -102,6 +102,12 @@ struct MainTabbedView: View {
                 }
                 
             }
+            .onAppear {
+                Task{
+                    let user = try await SupabaseManager.shared.userData()
+                    print("Uswerfwef",user ?? "ef")
+                }
+            }
           
         }
        
@@ -122,32 +128,40 @@ struct RightSideMenu: View {
             
             // Menu Buttons
             MenuButton(
+                    title: "Broadcast",
+                    iconName: "play.tv.fill",
+                    destination: HomeBoradcast(isMenuOpen: $isShowing),
+                    shapeType: .roundedRectangle // <-- ADD THIS
+                )
+            MenuButton(
                     title: "Settings",
                     iconName: "gearshape.fill",
-                    destination: Text("Settings View"),
-                    shapeType: .circle // <-- ADD THIS
+                    destination: SettingView(isMenuOpen: $isShowing),
+                    shapeType: .roundedRectangle // <-- ADD THIS
                 )
 
                 // 2. Profile button (Rounded Rectangle shape)
                 MenuButton(
                     title: "Profile",
                     iconName: "person.fill",
-                    destination: Text("Profile View"),
+                    destination: UserProfile(isMenuOpen: $isShowing),
                     shapeType: .roundedRectangle // <-- ADD THIS
                 )
 
                 // 3. Help button (Octagonal shape)
                 MenuButton(
-                    title: "Help",
-                    iconName: "questionmark.circle.fill",
-                    destination: Text("Help View"),
-                    shapeType: .octagon // <-- ADD THIS
+                    title: "Post",
+                    iconName: "plus",
+//                    destination: UploadPostView(),
+                    destination: FollowSuggestion(),
+                    shapeType: .roundedRectangle // <-- ADD THIS
                 )
             
             Spacer() // Pushes content up
         }
         .padding(30)
-        .frame(width: UIScreen.main.bounds.width * 0.25, height: UIScreen.main.bounds.height / 2.5)
+//        .frame(width: UIScreen.main.bounds.width * 0.25, height: UIScreen.main.bounds.height / 2.5)
+        .frame(maxWidth: UIScreen.main.bounds.width * 0.25,maxHeight: UIScreen.main.bounds.height / 2)
         .background(Color.white.opacity(0.5).blur(radius: 50))
         .clipShape(
             .rect(topLeadingRadius: 35, bottomLeadingRadius: 35)
@@ -282,15 +296,19 @@ struct PressedStateStyle: ButtonStyle {
 
 struct HomeView: View {
     
-    
+    @Binding var isMenuOpen: Bool
     
     var body: some View {
         
-        ZStack(alignment: .bottom){
-            Color.red.ignoresSafeArea()
-           
+        AppBackgroundView {
             Text("Home")
         }
+        .onAppear {
+            isMenuOpen = false
+        }
+        
+        
+        
     }
 }
 struct FavoriteView: View {

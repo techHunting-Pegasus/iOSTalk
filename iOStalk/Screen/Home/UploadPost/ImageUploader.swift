@@ -23,197 +23,7 @@ enum SelectionType {
         }
     }
 }
-struct ImageUploader: View {
-    @State private var images: [UIImage] = []
-    @State private var pickerItems: [PhotosPickerItem] = []
-    @State private var showPicker: Bool = false
-    
-    let maxLimit = 10
-    let gridColumns = Array(repeating: GridItem(.flexible(), spacing: 10), count: 3)
-    @State var selectedImage: UIImage?
-    
-    @State var selectiontyi : SelectionType =  .images
-    @State var videoUrl: URL?
-    @State var showVideoPicker: Bool = false
-    @State var showVideoPreivew:Bool = false
-    @State var player:AVPlayer?
-    
-    
-    var body: some View {
-        ZStack {
-            Color.green.ignoresSafeArea()
-            
-            VStack{
-                HStack(spacing: 20) {
-                    
-                    // --- Images Button ---
-                    Button {
-                        selectiontyi = .images
-                        // ⭐️ Clear video when switching to images
-                        videoUrl?.stopAccessingSecurityScopedResource()
-                        videoUrl = nil
-                        player = nil
-                    } label: {
-                        Text(SelectionType.images.stringValue)
-                            .foregroundStyle(selectiontyi == .images ? .white : .gray)
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 15)
-                            .background(selectiontyi == .images ? Color.blue : Color.gray.opacity(0.2))
-                            .clipShape(Capsule())
-                    }
-                    
-                    // --- Videos Button ---
-                    Button {
-                        selectiontyi = .videos
-                        // ⭐️ Clear images when switching to video
-                        images.removeAll()
-                    } label: {
-                        Text(SelectionType.videos.stringValue)
-                            .foregroundStyle(selectiontyi == .videos ? .white : .gray)
-                            .padding(.vertical, 8)
-                            .padding(.horizontal, 15)
-                            .background(selectiontyi == .videos ? Color.blue : Color.gray.opacity(0.2))
-                            .clipShape(Capsule())
-                    }
-                }
-                .padding(.top)
-                VStack {
-                    
-                    if (selectiontyi == .images){
-                        ImageViewer(images: $images, selectedImage: $selectedImage, showPicker: $showPicker)
-                    }else{
-                        VideoViewer(
-                            videoURL: videoUrl, 
-                            selectedur: $videoUrl,
-                            showVideoPicker: $showVideoPicker,
-                            parsePlayer: $player
-                        )
-                        
-                    }
-                    
-                    
-                }
-                .frame(width: UIScreen.main.bounds.width - 20,
-                       height:  UIScreen.main.bounds.height * 0.3)
-                .background(Color.white)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding()
-            }
-            
-            
-            
-            
-        }
-        
-        
-        .sheet(item: $player, content: { player in
-            ZStack(alignment:.center) {
-                Color.black.ignoresSafeArea()
-                
-                VideoPlayerContainer(player: player, ismute: false,videoGravity: .resizeAspect,controls: true)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .onAppear {
-                        player.play()
-                    }
-                    .onDisappear {
-                        player.pause()
-                        // IMPORTANT: Stop accessing the resource when done.
-                        
-                    }
-                
-            }
-        })
-        .sheet(item: $selectedImage) { img in
-            ZStack(alignment:.center) {
-                Color.black.ignoresSafeArea()
-                Image(uiImage: img)
-                    .resizable()
-                    .scaledToFit()
-            }
-        }
-        
-        .onAppear {
-            if let sample = UIImage(named: "foosd") {
-                images.append(sample)
-                images.append(sample) // Add it twice for a better grid test
-            }
-            if let samplee = UIImage(named: "Hamburger") {
-                images.append(samplee)
-                
-            }
-            
-        }
-        .onAppear(perform: {
-            if let  url = Bundle.main.url(forResource: "gyn", withExtension: "mp4"){
-                videoUrl = url
-            }
-        })
-        .photosPicker(isPresented: $showVideoPicker,
-                      selection: $pickerItems,
-                      matching: .videos)
-        .photosPicker(isPresented: $showPicker,
-                      selection: $pickerItems,
-                      maxSelectionCount: maxLimit - images.count,
-                      matching: .images)
-        .onChange(of: pickerItems) { olditem,newItems in
-            Task {
-                for item in newItems {
-                    
-                    if let data = try? await item.loadTransferable(type: Data.self){
-                        if let fileExtension = item.supportedContentTypes.first?.preferredFilenameExtension {
-                            if isvideo(fileExtension){
-                                let videoName = UUID().uuidString + ".\(fileExtension)"
-                                
-                                if let fileURL = saveDataToDocumentsDir(data, with: videoName) {
-                                    // Success!
-                                    videoUrl = fileURL
-                                    print(videoName, "sdfgdfg", fileURL)
-                                } else {
-                                    print("Failed to save data item to directory.")
-                                }
-                            }else{
-                                if let img = UIImage(data: data) {
-                                    
-                                    // Append with limit check
-                                    if images.count < maxLimit {
-                                        images.append(img)
-                                    }
-                                }
-                            }
-                            
-                        }
-                        
-                    }
-                }
-                pickerItems.removeAll()
-            }
-        }
-    }
-    
-    func isvideo(_ pathExtension: String) -> Bool {
-        
-        return ["mp4", "mov", "avi"].contains(pathExtension)
-    }
-    private func saveDataToDocumentsDir(_ data: Data, with fileName: String) -> URL? {
-        // We get the URL for the document directory
-        let documentsURL = URL.documentsDirectory
-        let fileURL = documentsURL.appendingPathComponent(fileName)
-        
-        // Now try saving our data to the fileURL
-        do {
-            try data.write(to: fileURL)
-            return fileURL
-        } catch {
-            print("Error saving file \(error)")
-            return nil
-        }
-    }
-}
 
-
-#Preview {
-    ImageUploader()
-}
 
 struct ImageViewer : View {
     @Binding  var images: [UIImage]
@@ -230,6 +40,7 @@ struct ImageViewer : View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: 60, height: 60)
+                    .foregroundStyle(.white)
             }
             .onTapGesture {
                 showPicker = true
@@ -251,16 +62,6 @@ struct ImageViewer : View {
                                     selectedImage = img
 
                                 }
-                                .onDrag {
-                                    selectedImage = img
-                                    return NSItemProvider(object: img)
-
-                                }
-                                .onDrop(of: [.image], delegate: ImageDropDelegate(destinationItem: img, images: $images, draggingItem: $selectedImage))
-
-                            
-                            
-                            
                             // Cross button
                             Button {
                                 images.remove(at: index)
@@ -296,34 +97,8 @@ struct ImageViewer : View {
         }
     }
 }
-struct ImageDropDelegate: DropDelegate {
-    let destinationItem: UIImage
-    @Binding var images: [UIImage]
-    @Binding var draggingItem: UIImage?
 
-    func performDrop(info: DropInfo) -> Bool {
-        draggingItem = nil // Reset dragging item on drop
-        return true
-    }
 
-    func dropEntered(info: DropInfo) {
-        guard let draggingItem = draggingItem else { return }
-        if draggingItem != destinationItem {
-            if let fromIndex = images.firstIndex(of: draggingItem),
-               let toIndex = images.firstIndex(of: destinationItem) {
-                if fromIndex != toIndex {
-                    images.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
-                }
-            }
-        }
-    }
-}
-
-//extension DraggableImage: Equatable {
-//    static func == (lhs: UIImage, rhs: UIImage) -> Bool {
-//        lhs.id == rhs.id
-//    }
-//}
 
 struct VideoViewer: View {
     // Input properties
@@ -347,6 +122,7 @@ struct VideoViewer: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: 60, height: 60)
+                    .foregroundStyle(.white)
             }
             .onTapGesture {
                 showVideoPicker = true
