@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "folder.fill.badge.plus@5x.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

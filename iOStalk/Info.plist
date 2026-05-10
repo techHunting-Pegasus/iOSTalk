@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+   info.plist
+   iOStalk
+
+   Created by Ishpreet singh on 26/03/26.
+   Copyright (c) 2026 ___ORGANIZATIONNAME___. All rights reserved.
+-->
+<plist version="1.0">
+<dict>
+
+    <!-- Allow all HTTP/HTTPS network requests (needed for embed providers) -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsArbitraryLoads</key>
+        <true/>
+        <key>NSAllowsArbitraryLoadsInWebContent</key>
+        <true/>
+    </dict>
+
+    <!-- Allow inline video playback in WKWebView -->
+    <key>WebKitMediaPlaybackAllowsInline</key>
+    <true/>
+    <key>WebKitMediaPlaybackRequiresUserAction</key>
+    <false/>
+
+    <!-- Camera permission (if you add QR/barcode scan for movie ID later) -->
+    <key>NSCameraUsageDescription</key>
+    <string>Used to scan QR codes for movie IDs.</string>
+
+    <!-- Microphone (required by Apple if WKWebView is used with media) -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Required for video playback in the embedded player.</string>
+
+    <!-- Photo Library (if user can save thumbnails/posters) -->
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Used to save movie posters to your photo library.</string>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Used to save movie posters to your photo library.</string>
+
+    <!-- Face ID (optional, if you add a locked favourites section) -->
+    <key>NSFaceIDUsageDescription</key>
+    <string>Used to protect your saved favourites.</string>
+
+    <!-- Background fetch (keeps provider status fresh) -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>fetch</string>
+        <string>remote-notification</string>
+    </array>
+
+    <!-- Supported orientations - portrait + landscape for video -->
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+
+    <!-- iPad orientations -->
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+
+    <!-- App display name -->
+    <key>CFBundleDisplayName</key>
+    <string>iOStalk</string>
+
+    <!-- Status bar style -->
+    <key>UIStatusBarStyle</key>
+    <string>UIStatusBarStyleLightContent</string>
+    <key>UIViewControllerBasedStatusBarAppearance</key>
+    <false/>
+
+    <!-- Hide status bar in full screen player -->
+    <key>UIStatusBarHidden</key>
+    <false/>
+
+    <!-- Launch screen -->
+    <key>UILaunchStoryboardName</key>
+    <string>LaunchScreen</string>
+
+    <!-- Main storyboard (SwiftUI uses this) -->
+    <key>UIMainStoryboardFile</key>
+    <string></string>
+
+    <!-- Required device capabilities -->
+    <key>UIRequiredDeviceCapabilities</key>
+    <array>
+        <string>armv7</string>
+    </array>
+
+</dict>
+</plist>
