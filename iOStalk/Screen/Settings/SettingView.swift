@@ -25,7 +25,7 @@ struct SettingView: View {
                         .ignoresSafeArea()
 
                     List {
-                        Accountsview()
+                        Accountsview(viewModel: settingvm)
                        
 
                         Section(header: Text(Appstrins.Notifications).foregroundStyle(.white)) {
@@ -80,10 +80,11 @@ struct SettingView: View {
             }
             
         }
+        .showErrorBanner($settingvm.errorMessage)
         .navigationBarHidden(true)
         .onAppear(perform: {
             isMenuOpen = false
-           
+            settingvm.refreshPrivacyState()
         })
         
     }
@@ -92,7 +93,8 @@ struct SettingView: View {
 
 
 struct Accountsview : View {
-    @State private var isPrivateAccount = false
+    @ObservedObject var viewModel: SettingVM
+    
     var body: some View {
         Section(header: Text(Appstrins.account).foregroundStyle(.white)) {
 
@@ -103,8 +105,15 @@ struct Accountsview : View {
             HStack {
                 Text(Appstrins.privateaccount)
                 Spacer()
-                Toggle("", isOn: $isPrivateAccount)
+                Toggle(
+                    "",
+                    isOn: Binding(
+                        get: { viewModel.isPrivateAccount },
+                        set: { viewModel.updatePrivacySetting(isPrivate: $0) }
+                    )
+                )
                     .labelsHidden()
+                    .disabled(viewModel.isUpdatingPrivacy)
             }
 
             Button(role: .destructive) {

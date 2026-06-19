@@ -14,7 +14,18 @@ struct UserModal : Codable,Identifiable{
     var email: String?
     var imgurl:String?
     var pass:String?
+    var isPrivateAccount: Bool?
     var created_at : String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case name
+        case email
+        case imgurl
+        case pass
+        case isPrivateAccount = "is_private_account"
+        case created_at
+    }
 }
 
 struct Post: Codable {

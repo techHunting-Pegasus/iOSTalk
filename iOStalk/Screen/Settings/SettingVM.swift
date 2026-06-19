@@ -8,14 +8,52 @@
 import Foundation
 
 @MainActor
-class SettingVM: ObservableObject {
-    private let authManager = SupabaseManager.shared
+final class SettingVM: ObservableObject {
     
-    func logout(){
+    @Published var isPrivateAccount = false
+    @Published var isUpdatingPrivacy = false
+    @Published var errorMessage: String?
+    
+    private let authManager: SupabaseManager
+    
+    init(authManager: SupabaseManager = .shared) {
+        self.authManager = authManager
+        self.isPrivateAccount = AppDefaults.userData.isPrivateAccount ?? false
+    }
+    
+    func refreshPrivacyState() {
+        isPrivateAccount = AppDefaults.userData.isPrivateAccount ?? false
+    }
+    
+    func updatePrivacySetting(isPrivate: Bool) {
         Task {
-         try await authManager.supabase.auth.signOut()
-            AppDefaults.isLogin = false
-            AppDefaults.clear()
+            await setPrivacy(isPrivate: isPrivate)
+        }
+    }
+    
+    func logout() {
+        Task {
+            do {
+                try await authManager.supabase.auth.signOut()
+                AppDefaults.isLogin = false
+                AppDefaults.clear()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+    
+    private func setPrivacy(isPrivate: Bool) async {
+        isUpdatingPrivacy = true
+        errorMessage = nil
+        defer { isUpdatingPrivacy = false }
+        
+        do {
+            let profile = try await authManager.updateCurrentUserPrivacySetting(isPrivateAccount: isPrivate)
+            isPrivateAccount = profile.isPrivateAccount ?? false
+        } catch {
+            isPrivateAccount = AppDefaults.userData.isPrivateAccount ?? false
+            errorMessage = error.localizedDescription
         }
     }
 }

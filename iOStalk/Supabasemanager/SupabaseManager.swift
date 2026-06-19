@@ -363,65 +363,330 @@ extension SupabaseManager {
            }
        }
     
-    func followuser(following_id: String, status: followStatud) {
-        Task {
-            do {
-                guard let myuserid = await currentUserId(), !myuserid.isEmpty else {
-                    print("Invalid current user id")
-                    return
-                }
-             
-                
-//                // 1. Check if already exists
-//                let existingResponse = try await supabase.database
-//                    .from(userfollow)
-//                    .select()
-//                    .eq("follower_id", value: myuserid)
-//                    .eq("following_id", value: following_id)
-//                    .execute()
-//                
-//                // decode response properly
-//                let existingData = try JSONDecoder().decode([followuser_req].self, from: existingResponse.data)
-//                
-//                if !existingData.isEmpty {
-//                    print(" Already requested or following")
-//                    return
-//                }
-                
-                // 2. Insert using Codable
-                let payload = followuser_req(
-                    follower_id: myuserid,
-                    following_id: following_id,
-                    status: status
-                )
-                
-                try await supabase.database
-                    .from(userfollow)
-                    .insert(payload)
-                    .execute()
-                
-                print("Follow request sent")
-                
-            } catch {
-                print("Follow error:", error.localizedDescription)
+    func updateCurrentUserPrivacySetting(isPrivateAccount: Bool) async throws -> UserModal {
+        guard let currentUserID = await currentUserId(), !currentUserID.isEmpty else {
+            throw NSError(
+                domain: "SupabaseManager",
+                code: 1101,
+                userInfo: [NSLocalizedDescriptionKey: "Current user not found."]
+            )
+        }
+        
+        let updatedProfile: UserModal = try await supabase.database
+            .from(Usercollection)
+            .update(["is_private_account": isPrivateAccount])
+            .eq("id", value: currentUserID)
+            .select()
+            .single()
+            .execute()
+            .value
+        
+        AppDefaults.userData = updatedProfile
+        return updatedProfile
+    }
+    
+    func fetchRelationshipRecords() async throws -> [UserRelationshipRecord] {
+        guard let currentUserID = await currentUserId(), !currentUserID.isEmpty else {
+            return []
+        }
+        
+        let records: [UserRelationshipRecord] = try await supabase.database
+            .from(userfollow)
+            .select()
+            .or("follower_id.eq.\(currentUserID),following_id.eq.\(currentUserID)")
+            .execute()
+            .value
+        
+        return records
+    }
+    
+    func sendFollowRequest(to targetUser: UserModal) async throws {
+        guard let currentUserID = await currentUserId(), !currentUserID.isEmpty else {
+            throw NSError(
+                domain: "SupabaseManager",
+                code: 1201,
+                userInfo: [NSLocalizedDescriptionKey: "Current user not found."]
+            )
+        }
+        
+        guard let targetUserID = targetUser.id, !targetUserID.isEmpty else {
+            throw NSError(
+                domain: "SupabaseManager",
+                code: 1202,
+                userInfo: [NSLocalizedDescriptionKey: "Target user id is missing."]
+            )
+        }
+        
+        guard currentUserID != targetUserID else {
+            return
+        }
+        
+        let existingRelationship = try await fetchDirectedRelationship(
+            followerID: currentUserID,
+            followingID: targetUserID
+        )
+        
+        if let existingRelationship {
+            switch existingRelationship.status.normalized {
+            case .followPending, .follower, .friendPending, .friend:
+                return
+            case .pending, .accepted:
+                return
             }
         }
+        
+        let followStatus: UserRelationshipStatus = (targetUser.isPrivateAccount ?? false)
+            ? .followPending
+            : .follower
+        
+        let payload = RelationshipInsertPayload(
+            follower_id: currentUserID,
+            following_id: targetUserID,
+            status: followStatus.rawValue,
+            friend_requested_by: nil
+        )
+        
+        try await supabase.database
+            .from(userfollow)
+            .insert(payload)
+            .execute()
     }
-
-}
-
-
-enum followStatud: String, Codable {
-    case pending
-    case accepted
-}
-struct followuser_req: Codable{
-    let follower_id:String
-    let following_id: String
-    let status : followStatud
-}
-
-struct uswq: Codable {
-    let id: String
-    let Userstring: UserModal
+    
+    func unfollow(userID: String) async throws {
+        guard let currentUserID = await currentUserId(), !currentUserID.isEmpty else {
+            throw NSError(
+                domain: "SupabaseManager",
+                code: 1203,
+                userInfo: [NSLocalizedDescriptionKey: "Current user not found."]
+            )
+        }
+        
+        try await supabase.database
+            .from(userfollow)
+            .delete()
+            .eq("follower_id", value: currentUserID)
+            .eq("following_id", value: userID)
+            .execute()
+    }
+    
+    func sendFriendRequest(userID: String) async throws {
+        guard let currentUserID = await currentUserId(), !currentUserID.isEmpty else {
+            throw NSError(
+                domain: "SupabaseManager",
+                code: 1204,
+                userInfo: [NSLocalizedDescriptionKey: "Current user not found."]
+            )
+        }
+        
+        let pairRelationship = try await fetchPairRelationshipRecords(
+            firstUserID: currentUserID,
+            secondUserID: userID
+        )
+        
+        if pairRelationship.contains(where: { $0.status.normalized == .friend || $0.status.normalized == .friendPending }) {
+            return
+        }
+        
+        guard let followerRecord = pairRelationship.first(where: { $0.status.normalized == .follower }) else {
+            throw NSError(
+                domain: "SupabaseManager",
+                code: 1205,
+                userInfo: [NSLocalizedDescriptionKey: "Friend request can only be sent after follow is accepted."]
+            )
+        }
+        
+        let payload = RelationshipUpdatePayload(
+            status: UserRelationshipStatus.friendPending.rawValue,
+            friend_requested_by: currentUserID
+        )
+        
+        try await supabase.database
+            .from(userfollow)
+            .update(payload)
+            .eq("follower_id", value: followerRecord.followerID)
+            .eq("following_id", value: followerRecord.followingID)
+            .execute()
+    }
+    
+    func respondToFollowRequest(from followerUserID: String, accept: Bool) async throws {
+        guard let currentUserID = await currentUserId(), !currentUserID.isEmpty else {
+            throw NSError(
+                domain: "SupabaseManager",
+                code: 1206,
+                userInfo: [NSLocalizedDescriptionKey: "Current user not found."]
+            )
+        }
+        
+        guard let requestRecord = try await fetchDirectedRelationship(
+            followerID: followerUserID,
+            followingID: currentUserID
+        ) else {
+            return
+        }
+        
+        let normalizedStatus = requestRecord.status.normalized
+        guard normalizedStatus == .followPending else {
+            return
+        }
+        
+        if accept {
+            let payload = RelationshipUpdatePayload(
+                status: UserRelationshipStatus.follower.rawValue,
+                friend_requested_by: nil
+            )
+            
+            try await supabase.database
+                .from(userfollow)
+                .update(payload)
+                .eq("follower_id", value: followerUserID)
+                .eq("following_id", value: currentUserID)
+                .execute()
+        } else {
+            try await supabase.database
+                .from(userfollow)
+                .delete()
+                .eq("follower_id", value: followerUserID)
+                .eq("following_id", value: currentUserID)
+                .execute()
+        }
+    }
+    
+    func respondToFriendRequest(from userID: String, accept: Bool) async throws {
+        guard let currentUserID = await currentUserId(), !currentUserID.isEmpty else {
+            throw NSError(
+                domain: "SupabaseManager",
+                code: 1207,
+                userInfo: [NSLocalizedDescriptionKey: "Current user not found."]
+            )
+        }
+        
+        let pairRelationship = try await fetchPairRelationshipRecords(
+            firstUserID: currentUserID,
+            secondUserID: userID
+        )
+        
+        guard let friendRequestRecord = pairRelationship.first(where: {
+            $0.status.normalized == .friendPending && $0.friendRequestedBy != currentUserID
+        }) else {
+            return
+        }
+        
+        let payload = RelationshipUpdatePayload(
+            status: accept ? UserRelationshipStatus.friend.rawValue : UserRelationshipStatus.follower.rawValue,
+            friend_requested_by: nil
+        )
+        
+        try await supabase.database
+            .from(userfollow)
+            .update(payload)
+            .eq("follower_id", value: friendRequestRecord.followerID)
+            .eq("following_id", value: friendRequestRecord.followingID)
+            .execute()
+    }
+    
+    func unfriend(userID: String) async throws {
+        guard let currentUserID = await currentUserId(), !currentUserID.isEmpty else {
+            throw NSError(
+                domain: "SupabaseManager",
+                code: 1208,
+                userInfo: [NSLocalizedDescriptionKey: "Current user not found."]
+            )
+        }
+        
+        let pairRelationship = try await fetchPairRelationshipRecords(
+            firstUserID: currentUserID,
+            secondUserID: userID
+        )
+        
+        guard let friendRecord = pairRelationship.first(where: { $0.status.normalized == .friend }) else {
+            return
+        }
+        
+        let payload = RelationshipUpdatePayload(
+            status: UserRelationshipStatus.follower.rawValue,
+            friend_requested_by: nil
+        )
+        
+        try await supabase.database
+            .from(userfollow)
+            .update(payload)
+            .eq("follower_id", value: friendRecord.followerID)
+            .eq("following_id", value: friendRecord.followingID)
+            .execute()
+    }
+    
+    func relationshipState(
+        with targetUserID: String,
+        records: [UserRelationshipRecord],
+        currentUserID: String
+    ) -> RelationshipState {
+        if let currentToTargetRecord = records.first(where: {
+            $0.followerID == currentUserID && $0.followingID == targetUserID
+        }) {
+            return mapRelationshipState(record: currentToTargetRecord, currentUserID: currentUserID, isCurrentToTarget: true)
+        }
+        
+        if let targetToCurrentRecord = records.first(where: {
+            $0.followerID == targetUserID && $0.followingID == currentUserID
+        }) {
+            return mapRelationshipState(record: targetToCurrentRecord, currentUserID: currentUserID, isCurrentToTarget: false)
+        }
+        
+        return .none
+    }
+    
+    private func fetchDirectedRelationship(
+        followerID: String,
+        followingID: String
+    ) async throws -> UserRelationshipRecord? {
+        let records: [UserRelationshipRecord] = try await supabase.database
+            .from(userfollow)
+            .select()
+            .eq("follower_id", value: followerID)
+            .eq("following_id", value: followingID)
+            .execute()
+            .value
+        
+        return records.first
+    }
+    
+    private func fetchPairRelationshipRecords(
+        firstUserID: String,
+        secondUserID: String
+    ) async throws -> [UserRelationshipRecord] {
+        let relationFilter = "and(follower_id.eq.\(firstUserID),following_id.eq.\(secondUserID)),and(follower_id.eq.\(secondUserID),following_id.eq.\(firstUserID))"
+        
+        let records: [UserRelationshipRecord] = try await supabase.database
+            .from(userfollow)
+            .select()
+            .or(relationFilter)
+            .execute()
+            .value
+        
+        return records
+    }
+    
+    private func mapRelationshipState(
+        record: UserRelationshipRecord,
+        currentUserID: String,
+        isCurrentToTarget: Bool
+    ) -> RelationshipState {
+        switch record.status.normalized {
+        case .followPending:
+            return isCurrentToTarget ? .followRequestedSent : .followRequestedReceived
+        case .follower:
+            return isCurrentToTarget ? .following : .followedBy
+        case .friendPending:
+            if record.friendRequestedBy == currentUserID {
+                return .friendRequestedSent
+            }
+            return .friendRequestedReceived
+        case .friend:
+            return .friend
+        case .pending:
+            return isCurrentToTarget ? .followRequestedSent : .followRequestedReceived
+        case .accepted:
+            return isCurrentToTarget ? .following : .followedBy
+        }
+    }
 }
