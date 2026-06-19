@@ -63,8 +63,13 @@ extension SupabaseManager {
             if let cachedUser {
                 return cachedUser.id.uuidString
             }
-            let user = await fetchCurrentUser()
-            return user?.id.uuidString
+            if let user = await fetchCurrentUser() {
+                return user.id.uuidString
+            }
+            if let storedUserID = AppDefaults.userData.id, !storedUserID.isEmpty {
+                return storedUserID
+            }
+            return nil
         }
     
 
@@ -109,6 +114,62 @@ extension SupabaseManager {
             }
         }
     }
+    
+    func signInWithEmailAndPassword(email: String, password: String) async throws -> UserModal {
+        let normalizedEmail = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        do {
+            let session = try await supabase.auth.signIn(email: normalizedEmail, password: password)
+            cachedUser = session.user
+            return try await fetchUserProfile(forUserID: session.user.id.uuidString)
+        } catch {
+            // Supports legacy accounts where profile passwords were saved in Users table.
+            if let legacyProfile = await fetchLegacyProfile(email: normalizedEmail, password: password) {
+                AppDefaults.userData = legacyProfile
+                return legacyProfile
+            }
+            throw error
+        }
+    }
+    
+    private func fetchUserProfile(forUserID userID: String) async throws -> UserModal {
+        guard !userID.isEmpty else {
+            throw NSError(
+                domain: "SupabaseManager",
+                code: 1001,
+                userInfo: [NSLocalizedDescriptionKey: "Invalid user identifier."]
+            )
+        }
+        
+        let profile: UserModal = try await supabase.database
+            .from(Usercollection)
+            .select()
+            .eq("id", value: userID)
+            .single()
+            .execute()
+            .value
+        
+        AppDefaults.userData = profile
+        return profile
+    }
+    
+    private func fetchLegacyProfile(email: String, password: String) async -> UserModal? {
+        do {
+            let profile: UserModal = try await supabase.database
+                .from(Usercollection)
+                .select()
+                .eq("email", value: email)
+                .eq("pass", value: password)
+                .single()
+                .execute()
+                .value
+            
+            return profile
+        } catch {
+            return nil
+        }
+    }
+    
     func uploadImage(_ image: UIImage, path: String) async throws -> String {
             guard let imageData = image.jpegData(compressionQuality: 0.8) else {
                 throw NSError(domain: "ImageConversionError", code: 0, userInfo: [NSLocalizedDescriptionKey: "Failed to convert image to JPEG"])

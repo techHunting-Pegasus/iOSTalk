@@ -10,7 +10,7 @@ struct SplashScreen: View {
                 if isLogin{
                     MainTabbedView()
                 }else{
-                    EmailVC()
+                    LoginView()
                 }
                 
             
